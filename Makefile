@@ -1,4 +1,4 @@
-.PHONY: run build tidy lint clean
+.PHONY: run build tidy lint test clean
 
 # Default target
 all: build
@@ -14,6 +14,10 @@ build:
 ## tidy: tidy go modules
 tidy:
 	go mod tidy
+
+## test: run all unit tests
+test:
+	go test ./... -v -count=1
 
 ## lint: run golangci-lint (install: https://golangci-lint.run/usage/install/)
 lint:
