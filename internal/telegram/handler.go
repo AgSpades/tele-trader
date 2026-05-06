@@ -2,8 +2,10 @@ package telegram
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
+	"os"
 	"regexp"
 	"strings"
 	"unicode"
@@ -11,6 +13,7 @@ import (
 	"github.com/gotd/td/telegram"
 	"github.com/gotd/td/telegram/auth"
 	"github.com/gotd/td/tg"
+	"golang.org/x/term"
 )
 
 // Handler wraps the gotd Telegram client and manages the userbot lifecycle.
@@ -32,6 +35,64 @@ func NewHandler(appID int, appHash, phone string, channelID int64, session *File
 		session:   session,
 	}
 }
+
+// stdinAuthenticator implements auth.UserAuthenticator, prompting the user
+// interactively for OTP and 2FA password. The 2FA password is read with
+// terminal echo disabled so it is never displayed on screen.
+type stdinAuthenticator struct {
+	phone string
+}
+
+// Phone returns the configured phone number without prompting.
+func (a stdinAuthenticator) Phone(_ context.Context) (string, error) {
+	return a.phone, nil
+}
+
+// Code prompts the user to enter the OTP received via Telegram/SMS.
+func (a stdinAuthenticator) Code(_ context.Context, _ *tg.AuthSentCode) (string, error) {
+	slog.Info("telegram: OTP required — enter the Telegram verification code:")
+	fmt.Print("> ")
+	var code string
+	if _, err := fmt.Fscan(os.Stdin, &code); err != nil {
+		return "", fmt.Errorf("reading OTP from stdin: %w", err)
+	}
+	return strings.TrimSpace(code), nil
+}
+
+// Password prompts for the Telegram 2FA cloud password.
+// Input is hidden (no terminal echo) so the password is never visible.
+func (a stdinAuthenticator) Password(_ context.Context) (string, error) {
+	slog.Info("telegram: 2FA password required — enter your Telegram cloud password:")
+	fmt.Print("> ")
+
+	// term.ReadPassword disables echo, reads until Enter, then restores the terminal.
+	raw, err := term.ReadPassword(int(os.Stdin.Fd()))
+	fmt.Println() // print newline after hidden input
+	if err != nil {
+		// Fallback to plain stdin read if not running in a TTY (e.g. piped input).
+		slog.Warn("telegram: terminal not a TTY, falling back to plain stdin read")
+		var pw string
+		if _, scanErr := fmt.Fscan(os.Stdin, &pw); scanErr != nil {
+			return "", fmt.Errorf("reading 2FA password: %w", scanErr)
+		}
+		return strings.TrimSpace(pw), nil
+	}
+	return string(raw), nil
+}
+
+// AcceptTermsOfService auto-accepts Telegram's Terms of Service.
+// Required for new account sign-ups; existing accounts rarely trigger this.
+func (a stdinAuthenticator) AcceptTermsOfService(_ context.Context, tos tg.HelpTermsOfService) error {
+	slog.Info("telegram: auto-accepting Terms of Service", "min_age", tos.MinAgeConfirm)
+	return nil
+}
+
+// SignUp returns an error — this bot should only authenticate to existing accounts.
+func (a stdinAuthenticator) SignUp(_ context.Context) (auth.UserInfo, error) {
+	return auth.UserInfo{}, errors.New("telegram: sign-up is not supported; please register the account first")
+}
+
+// --- message cleaning helpers ---
 
 // emojiAndTimestampRe strips timestamps (e.g. "09:15 AM") from messages.
 var emojiAndTimestampRe = regexp.MustCompile(`\b\d{1,2}:\d{2}(?:\s?[APap][Mm])?\b`)
@@ -55,6 +116,8 @@ func cleanMessage(raw string) string {
 }
 
 // Start connects the Telegram userbot and begins dispatching messages to msgCh.
+// On first run it will interactively prompt for OTP and (if 2FA is enabled) the
+// cloud password. Subsequent runs reuse the persisted session — no prompts needed.
 // It blocks until ctx is cancelled.
 func (h *Handler) Start(ctx context.Context, msgCh chan<- string) error {
 	dispatcher := tg.NewUpdateDispatcher()
@@ -80,7 +143,7 @@ func (h *Handler) Start(ctx context.Context, msgCh chan<- string) error {
 
 		slog.Info("telegram: new signal received", "raw_len", len(msg.Message), "clean", clean)
 
-		// Non-blocking send — drop if downstream processor is full (rare).
+		// Non-blocking send — drop if the downstream processor is full (rare).
 		select {
 		case msgCh <- clean:
 		default:
@@ -97,20 +160,8 @@ func (h *Handler) Start(ctx context.Context, msgCh chan<- string) error {
 	return client.Run(ctx, func(ctx context.Context) error {
 		slog.Info("telegram: client started, authenticating…")
 
-		// codeReader prompts the user for the OTP code on first run.
-		codeReader := auth.CodeAuthenticatorFunc(
-			func(ctx context.Context, _ *tg.AuthSentCode) (string, error) {
-				slog.Info("telegram: OTP required — enter the Telegram verification code:")
-				var code string
-				if _, err := fmt.Scan(&code); err != nil {
-					return "", fmt.Errorf("reading OTP: %w", err)
-				}
-				return strings.TrimSpace(code), nil
-			},
-		)
-
 		flow := auth.NewFlow(
-			auth.Constant(h.phone, "", codeReader),
+			stdinAuthenticator{phone: h.phone},
 			auth.SendCodeOptions{},
 		)
 
