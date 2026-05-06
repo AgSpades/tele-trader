@@ -36,8 +36,8 @@ session-push:
 	@test -f session.json || (echo "ERROR: session.json not found — run the bot locally first"; exit 1)
 	@echo "Pushing session.json to $(VPS_HOST)…"
 	ssh $(VPS_HOST) "docker run --rm -v tele-trader_session_data:/data alpine sh -c 'rm -f /data/session.json'"
-	cat session.json | ssh $(VPS_HOST) "docker run --rm -i -v tele-trader_session_data:/data alpine sh -c 'cat > /data/session.json && chmod 600 /data/session.json'"
-	@echo "✅ Session pushed. Run: ssh $(VPS_HOST) 'cd ~/tele-trader && docker compose up -d'"
+	cat session.json | ssh $(VPS_HOST) "docker run --rm -i -v tele-trader_session_data:/data alpine sh -c 'cat > /data/session.json && chown 65532:65532 /data/session.json && chmod 600 /data/session.json'"
+	@echo "✅ Session pushed. Run: ssh $(VPS_HOST) 'cd ~/path/to/tele-trader && docker compose up -d'"
 
 ## lint: run golangci-lint (install: https://golangci-lint.run/usage/install/)
 lint:
