@@ -1,4 +1,7 @@
-.PHONY: run build tidy lint test docker-build docker-run clean
+.PHONY: run build tidy lint test docker-build docker-run session-push clean
+
+# VPS host — set via env: VPS_HOST=user@ip make session-push
+VPS_HOST ?= user@YOUR_VPS_IP
 
 # Default target
 all: build
@@ -23,9 +26,18 @@ test:
 docker-build:
 	DOCKER_BUILDKIT=1 docker build -t tele-trader:latest .
 
-## docker-run: first-time interactive run (OTP + 2FA prompt)
+## docker-run: first-time interactive run on VPS (OTP + 2FA prompt)
 docker-run:
 	docker compose run --rm -it bot
+
+## session-push: copy local session.json → VPS Docker volume (skip OTP on VPS)
+## Usage: VPS_HOST=user@1.2.3.4 make session-push
+session-push:
+	@test -f session.json || (echo "ERROR: session.json not found — run the bot locally first"; exit 1)
+	@echo "Pushing session.json to $(VPS_HOST)…"
+	ssh $(VPS_HOST) "docker run --rm -v tele-trader_session_data:/data alpine sh -c 'rm -f /data/session.json'"
+	cat session.json | ssh $(VPS_HOST) "docker run --rm -i -v tele-trader_session_data:/data alpine sh -c 'cat > /data/session.json && chmod 600 /data/session.json'"
+	@echo "✅ Session pushed. Run: ssh $(VPS_HOST) 'cd ~/tele-trader && docker compose up -d'"
 
 ## lint: run golangci-lint (install: https://golangci-lint.run/usage/install/)
 lint:
