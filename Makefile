@@ -1,4 +1,4 @@
-.PHONY: run build tidy lint test clean
+.PHONY: run build tidy lint test docker-build docker-run clean
 
 # Default target
 all: build
@@ -18,6 +18,14 @@ tidy:
 ## test: run all unit tests
 test:
 	go test ./... -v -count=1
+
+## docker-build: build the Docker image
+docker-build:
+	DOCKER_BUILDKIT=1 docker build -t tele-trader:latest .
+
+## docker-run: first-time interactive run (OTP + 2FA prompt)
+docker-run:
+	docker compose run --rm -it bot
 
 ## lint: run golangci-lint (install: https://golangci-lint.run/usage/install/)
 lint:

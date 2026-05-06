@@ -1,0 +1,67 @@
+# docker-compose.yml — tele-trader VPS deployment
+# Usage:
+#   First run (needs OTP + 2FA): docker compose run --rm -it bot
+#   After session is saved:      docker compose up -d
+#   Logs:                         docker compose logs -f
+#   Stop:                         docker compose down
+
+services:
+  bot:
+    image: tele-trader:latest
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: runtime   # skip to the final stage
+
+    # ── Environment ────────────────────────────────────────────────────────
+    # All secrets are injected from the host .env file.
+    # Never hard-code credentials here.
+    env_file:
+      - .env
+
+    # Override the session path so it lands in the persistent volume.
+    environment:
+      SESSION_FILE_PATH: /data/session.json
+
+    # ── Persistence ────────────────────────────────────────────────────────
+    # The named volume keeps session.json across container restarts/upgrades.
+    volumes:
+      - session_data:/data
+
+    # ── Restart policy ─────────────────────────────────────────────────────
+    # always: survives reboots and crashes.
+    # Change to "on-failure" if you want it to stop after repeated crashes.
+    restart: always
+
+    # ── Resource limits ────────────────────────────────────────────────────
+    # The bot is I/O-bound (network only). 256 MB is generous.
+    deploy:
+      resources:
+        limits:
+          cpus: "0.5"
+          memory: 256M
+        reservations:
+          cpus: "0.1"
+          memory: 64M
+
+    # ── Logging ────────────────────────────────────────────────────────────
+    # json-file driver with rotation so logs don't fill the disk.
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "5"
+
+    # ── Health check ───────────────────────────────────────────────────────
+    # The bot is a daemon with no HTTP endpoint.
+    # We check that the process is still running (exit code 0 = alive).
+    healthcheck:
+      test: ["CMD-SHELL", "pgrep -x tele-trader || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+
+volumes:
+  session_data:
+    driver: local

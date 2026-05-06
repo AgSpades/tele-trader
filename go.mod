@@ -7,6 +7,7 @@ require (
 	github.com/gotd/td v0.143.0
 	github.com/joho/godotenv v1.5.1
 	github.com/marketcalls/openalgo-go v0.0.0-20251225182721-9889d2d6f968
+	golang.org/x/term v0.42.0
 	golang.org/x/time v0.15.0
 )
 
@@ -52,7 +53,6 @@ require (
 	golang.org/x/net v0.52.0 // indirect
 	golang.org/x/sync v0.20.0 // indirect
 	golang.org/x/sys v0.43.0 // indirect
-	golang.org/x/term v0.42.0 // indirect
 	golang.org/x/text v0.35.0 // indirect
 	golang.org/x/tools v0.43.0 // indirect
 	gopkg.in/yaml.v2 v2.4.0 // indirect
