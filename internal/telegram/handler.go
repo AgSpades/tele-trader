@@ -23,6 +23,9 @@ type Handler struct {
 	phone     string
 	channelID int64
 	session   *FileSessionStorage
+	// readyCh is closed once authentication completes successfully, signalling
+	// to the caller that the session is valid and the bot's identity is confirmed.
+	readyCh chan struct{}
 }
 
 // NewHandler creates a new Telegram Handler.
@@ -33,7 +36,15 @@ func NewHandler(appID int, appHash, phone string, channelID int64, session *File
 		phone:     phone,
 		channelID: channelID,
 		session:   session,
+		readyCh:   make(chan struct{}),
 	}
+}
+
+// ReadyCh returns a channel that is closed once the Telegram session is
+// authenticated and client.Self() has succeeded. Use this to gate operations
+// that require a live, verified Telegram session.
+func (h *Handler) ReadyCh() <-chan struct{} {
+	return h.readyCh
 }
 
 // stdinAuthenticator implements auth.UserAuthenticator, prompting the user
@@ -119,6 +130,9 @@ func cleanMessage(raw string) string {
 // On first run it will interactively prompt for OTP and (if 2FA is enabled) the
 // cloud password. Subsequent runs reuse the persisted session — no prompts needed.
 // It blocks until ctx is cancelled.
+//
+// ReadyCh() is closed once authentication succeeds and client.Self() returns,
+// allowing callers to gate on Telegram being fully ready.
 func (h *Handler) Start(ctx context.Context, msgCh chan<- string) error {
 	dispatcher := tg.NewUpdateDispatcher()
 
@@ -175,6 +189,9 @@ func (h *Handler) Start(ctx context.Context, msgCh chan<- string) error {
 		}
 		slog.Info("telegram: authenticated", "username", self.Username, "id", self.ID)
 		slog.Info("telegram: listening for signals", "channel_id", h.channelID)
+
+		// Signal to waiters (e.g. healthcheck) that Telegram is ready.
+		close(h.readyCh)
 
 		// Block until ctx is cancelled (graceful shutdown).
 		<-ctx.Done()

@@ -15,6 +15,12 @@ import (
 	"github.com/AgSpades/tele-trader.git/internal/models"
 )
 
+// apiStatus is used to inspect the top-level "status" field in OpenAlgo responses.
+type apiStatus struct {
+	Status  string `json:"status"`
+	Message string `json:"message"`
+}
+
 const (
 	// DefaultStrategy is the strategy tag sent to OpenAlgo for all orders placed by the bot.
 	DefaultStrategy = "TeleTrader"
@@ -93,6 +99,29 @@ func (c *Client) GetFunds(ctx context.Context) (json.RawMessage, error) {
 		return errJSON(err), nil
 	}
 	return marshal(resp)
+}
+
+// Ping verifies that the OpenAlgo server is reachable and the API key is valid.
+// It calls the Funds endpoint and treats any "status": "error" response as a
+// connectivity failure. Used by the startup health-check gate.
+func (c *Client) Ping(ctx context.Context) error {
+	if err := c.limiter.Wait(ctx); err != nil {
+		return fmt.Errorf("broker: ping rate limiter: %w", err)
+	}
+	resp, err := c.oa.Funds()
+	if err != nil {
+		return fmt.Errorf("broker: ping: %w", err)
+	}
+	// Marshal and inspect the status field.
+	b, err := json.Marshal(resp)
+	if err != nil {
+		return fmt.Errorf("broker: ping marshal: %w", err)
+	}
+	var s apiStatus
+	if err := json.Unmarshal(b, &s); err == nil && s.Status == "error" {
+		return fmt.Errorf("broker: ping: OpenAlgo API error: %s", s.Message)
+	}
+	return nil
 }
 
 // PlaceOrder places a new order. Supports MARKET, LIMIT, and SL order types.
