@@ -1,0 +1,62 @@
+# docker-compose.yml — tele-trader VPS deployment
+# Usage:
+#   First deploy:  scp or make session-push, then: docker compose up -d
+#   Logs:          docker compose logs -f
+#   Stop:          docker compose down
+
+services:
+  bot:
+    image: tele-trader:latest
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: runtime
+
+    # ── Network ────────────────────────────────────────────────────────────
+    # host mode bypasses Docker NAT entirely.
+    # gotd/td's MTProto handshake requires a stable TCP connection to
+    # Telegram's servers — Docker bridge NAT drops it mid-handshake.
+    # The bot has no inbound ports so host mode has no downsides here.
+    network_mode: host
+
+    # ── Environment ────────────────────────────────────────────────────────
+    env_file:
+      - .env
+    environment:
+      SESSION_FILE_PATH: /data/session.json
+
+    # ── Persistence ────────────────────────────────────────────────────────
+    volumes:
+      - session_data:/data
+
+    # ── Restart policy ─────────────────────────────────────────────────────
+    restart: always
+
+    # ── Resource limits ────────────────────────────────────────────────────
+    # Note: resource limits under `deploy` are ignored by plain `docker compose`.
+    # Use --compatibility flag or Docker Swarm if you need hard limits.
+    # For a simple VPS deployment, ulimits are sufficient.
+    ulimits:
+      nofile:
+        soft: 1024
+        hard: 4096
+
+    # ── Logging ────────────────────────────────────────────────────────────
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "5"
+
+    # ── Health check ───────────────────────────────────────────────────────
+    # distroless/static has no shell or pgrep.
+    # We check process existence via /proc — available on any Linux host.
+    # The bot writes its PID to /data/tele-trader.pid on startup (see main.go).
+    # Simplest safe option: disable container-level health check and rely on
+    # the restart policy to recover from crashes.
+    healthcheck:
+      disable: true
+
+volumes:
+  session_data:
+    driver: local

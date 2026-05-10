@@ -1,0 +1,25 @@
+# .dockerignore — keep the build context lean and avoid leaking secrets
+# ─── Secrets & local config ────────────────────────────────────────────────
+.env
+session.json
+
+# ─── Git ───────────────────────────────────────────────────────────────────
+.git
+.gitignore
+
+# ─── Build outputs ─────────────────────────────────────────────────────────
+bin/
+
+# ─── Docs & dev files ──────────────────────────────────────────────────────
+docs/
+*.md
+!go.mod
+!go.sum
+
+# ─── Test files (not needed in final image) ────────────────────────────────
+**/*_test.go
+
+# ─── Editor / OS noise ─────────────────────────────────────────────────────
+.idea/
+.vscode/
+*.DS_Store
