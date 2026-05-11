@@ -152,6 +152,14 @@ func tools() []anthropic.ToolUnionParam {
 			},
 			"get_position_book",
 		),
+		anthropic.ToolUnionParamOfTool(
+			anthropic.ToolInputSchemaParam{
+				Type:       "object",
+				Properties: map[string]interface{}{},
+				Required:   []string{},
+			},
+			"get_order_book",
+		),
 	}
 }
 

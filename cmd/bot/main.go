@@ -45,7 +45,7 @@ func main() {
 
 	// --- Dependencies ---
 	brokerClient := broker.New(cfg.OpenAlgoAPIKey, cfg.OpenAlgoURL)
-	llmClient := llm.New(cfg.AnthropicAPIKey, brokerClient)
+	llmClient := llm.New(cfg, brokerClient)
 	session := telegramPkg.NewFileSessionStorage(cfg.SessionFilePath)
 	tgHandler := telegramPkg.NewHandler(
 		cfg.TelegramAppID,

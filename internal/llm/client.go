@@ -11,6 +11,7 @@ import (
 	"github.com/anthropics/anthropic-sdk-go/option"
 
 	"github.com/AgSpades/tele-trader.git/internal/broker"
+	"github.com/AgSpades/tele-trader.git/internal/config"
 	"github.com/AgSpades/tele-trader.git/internal/models"
 )
 
@@ -27,14 +28,16 @@ const (
 type Client struct {
 	ac     anthropic.Client
 	broker *broker.Client
+	cfg    *config.Config
 }
 
 // New creates a new LLM Client.
-func New(apiKey string, brokerClient *broker.Client) *Client {
-	ac := anthropic.NewClient(option.WithAPIKey(apiKey))
+func New(cfg *config.Config, brokerClient *broker.Client) *Client {
+	ac := anthropic.NewClient(option.WithAPIKey(cfg.AnthropicAPIKey))
 	return &Client{
 		ac:     ac,
 		broker: brokerClient,
+		cfg:    cfg,
 	}
 }
 
@@ -63,7 +66,7 @@ func (c *Client) ProcessSignal(ctx context.Context, signal models.Signal) (strin
 			Model:     anthropic.Model(claudeModel),
 			MaxTokens: maxTokens,
 			System: []anthropic.TextBlockParam{
-				{Text: MasterSystemPrompt},
+				{Text: GenerateSystemPrompt(c.cfg.TradeLotSize, c.cfg.OpeningSLPercent)},
 			},
 			Tools:    allTools,
 			Messages: messages,
@@ -172,6 +175,9 @@ func (c *Client) executeTool(ctx context.Context, tool anthropic.ToolUseBlock) (
 
 	case "get_position_book":
 		return c.broker.GetPositionBook(ctx)
+
+	case "get_order_book":
+		return c.broker.GetOrderBook(ctx)
 
 	default:
 		return nil, fmt.Errorf("unknown tool %q", tool.Name)

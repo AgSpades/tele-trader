@@ -29,8 +29,12 @@ type Config struct {
 	// Session storage path for gotd/td
 	SessionFilePath string
 
-	// DryRun routes all orders through OpenAlgo's Analyzer mode (no real trades)
+	// Feature flags
 	DryRun bool
+
+	// Fixed trading parameters
+	TradeLotSize     int
+	OpeningSLPercent float64
 }
 
 // Load reads .env (if present) and then environment variables, returning a validated Config.
@@ -72,6 +76,10 @@ func Load() (*Config, error) {
 	// --- Feature flags ---
 	cfg.DryRun = envBool("DRY_RUN", true) // default true — safe during development
 
+	// --- Trading parameters ---
+	cfg.TradeLotSize = envInt("TRADE_LOT_SIZE", 1)             // default 1 lot
+	cfg.OpeningSLPercent = envFloat("OPENING_SL_PERCENT", 15.0) // default 15%
+
 	return cfg, nil
 }
 
@@ -104,4 +112,32 @@ func envBool(key string, def bool) bool {
 		return def
 	}
 	return b
+}
+
+// envInt parses an integer env var, returning the default on parse failure.
+func envInt(key string, def int) int {
+	v := os.Getenv(key)
+	if v == "" {
+		return def
+	}
+	i, err := strconv.Atoi(v)
+	if err != nil {
+		slog.Warn("config: invalid int value, using default", "key", key, "default", def)
+		return def
+	}
+	return i
+}
+
+// envFloat parses a float env var, returning the default on parse failure.
+func envFloat(key string, def float64) float64 {
+	v := os.Getenv(key)
+	if v == "" {
+		return def
+	}
+	f, err := strconv.ParseFloat(v, 64)
+	if err != nil {
+		slog.Warn("config: invalid float value, using default", "key", key, "default", def)
+		return def
+	}
+	return f
 }

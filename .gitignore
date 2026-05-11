@@ -31,3 +31,6 @@ go.work.sum
 # session store
 session.json
 Master.md
+
+# logs
+*.log

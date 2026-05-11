@@ -222,6 +222,19 @@ func (c *Client) GetPositionBook(ctx context.Context) (json.RawMessage, error) {
 	return marshal(resp)
 }
 
+// GetOrderBook returns the current active and completed orders for the day.
+func (c *Client) GetOrderBook(ctx context.Context) (json.RawMessage, error) {
+	if err := c.wait(ctx); err != nil {
+		return nil, err
+	}
+	slog.Info("broker: get_order_book")
+	resp, err := c.oa.OrderBook()
+	if err != nil {
+		return errJSON(err), nil
+	}
+	return marshal(resp)
+}
+
 // errJSON wraps an error as a JSON object so the LLM can handle it gracefully.
 func errJSON(err error) json.RawMessage {
 	type errResp struct {
