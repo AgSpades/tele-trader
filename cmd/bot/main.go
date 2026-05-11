@@ -66,8 +66,13 @@ func main() {
 		}
 	}()
 
+	isFreshLogin := false
+	if _, err := os.Stat(cfg.SessionFilePath); os.IsNotExist(err) {
+		isFreshLogin = true
+	}
+
 	slog.Info("tele-trader: performing startup health checks")
-	if err := runStartupChecks(ctx, brokerClient, tgHandler, errCh); err != nil {
+	if err := runStartupChecks(ctx, brokerClient, tgHandler, errCh, isFreshLogin); err != nil {
 		slog.Error("tele-trader: startup health check failed", "error", err)
 		os.Exit(1)
 	}
@@ -99,18 +104,27 @@ func main() {
 // runStartupChecks verifies OpenAlgo API connectivity and waits for the
 // Telegram session to be authenticated before the signal processor is armed.
 // Both checks run concurrently. Returns an error if either check fails within
-// the configured timeout.
+// the configured timeout. If isFreshLogin is true, the timeout is disabled
+// to allow the user unlimited time to complete the interactive auth flow.
 func runStartupChecks(
 	ctx context.Context,
 	brokerClient *broker.Client,
 	tgHandler *telegramPkg.Handler,
 	tgErrCh <-chan error,
+	isFreshLogin bool,
 ) error {
-	timeout := startupCheckTimeout()
-	checkCtx, cancel := context.WithTimeout(ctx, timeout)
-	defer cancel()
+	var checkCtx context.Context
+	var cancel context.CancelFunc
 
-	slog.Info("healthcheck: starting", "timeout", timeout)
+	if isFreshLogin {
+		slog.Info("healthcheck: fresh login detected, waiting indefinitely for Telegram auth…")
+		checkCtx, cancel = context.WithCancel(ctx)
+	} else {
+		timeout := startupCheckTimeout()
+		slog.Info("healthcheck: starting", "timeout", timeout)
+		checkCtx, cancel = context.WithTimeout(ctx, timeout)
+	}
+	defer cancel()
 
 	type result struct {
 		name string
