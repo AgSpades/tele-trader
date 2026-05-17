@@ -35,6 +35,8 @@ type Client struct {
 
 	mu      sync.Mutex
 	history []anthropic.MessageParam
+
+	tradeMemory []TradeMemory
 }
 
 // New creates a new LLM Client.
@@ -61,7 +63,12 @@ func (c *Client) ProcessSignal(ctx context.Context, signal models.Signal) (strin
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
-	userMsg := anthropic.NewUserMessage(anthropic.NewTextBlock(signal.CleanText))
+	historyUserMsg := anthropic.NewUserMessage(anthropic.NewTextBlock(signal.CleanText))
+	userMsg := anthropic.NewUserMessage(anthropic.NewTextBlock(fmt.Sprintf(
+		"TRADING_MEMORY:\n%s\n\nTELEGRAM_MESSAGE:\n%s",
+		c.memorySnapshot(),
+		signal.CleanText,
+	)))
 	messages := append([]anthropic.MessageParam{}, c.history...)
 	messages = append(messages, userMsg)
 
@@ -92,7 +99,7 @@ func (c *Client) ProcessSignal(ctx context.Context, signal models.Signal) (strin
 		case anthropic.StopReasonEndTurn:
 			// Extract the final text response.
 			text := extractText(resp)
-			c.remember(userMsg, anthropic.NewAssistantMessage(anthropic.NewTextBlock(text)))
+			c.remember(historyUserMsg, anthropic.NewAssistantMessage(anthropic.NewTextBlock(text)))
 			return text, nil
 
 		case anthropic.StopReasonToolUse:
@@ -197,6 +204,20 @@ func (c *Client) executeTool(ctx context.Context, tool anthropic.ToolUseBlock) (
 			return nil, fmt.Errorf("parse cancel_order params: %w", err)
 		}
 		return c.broker.CancelOrder(ctx, p)
+
+	case "upsert_trade_memory":
+		var p upsertTradeMemoryParams
+		if err := json.Unmarshal(inputBytes, &p); err != nil {
+			return nil, fmt.Errorf("parse upsert_trade_memory params: %w", err)
+		}
+		return c.upsertTradeMemory(p), nil
+
+	case "close_trade_memory":
+		var p closeTradeMemoryParams
+		if err := json.Unmarshal(inputBytes, &p); err != nil {
+			return nil, fmt.Errorf("parse close_trade_memory params: %w", err)
+		}
+		return c.closeTradeMemory(p), nil
 
 	case "get_position_book":
 		return c.broker.GetPositionBook(ctx)
