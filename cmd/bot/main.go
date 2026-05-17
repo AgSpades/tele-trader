@@ -21,12 +21,14 @@ import (
 
 func main() {
 	// --- Structured JSON logging ---
-	logger := slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{
-		Level: slog.LevelInfo,
-	}))
-	slog.SetDefault(logger)
+	logFile, logPath, err := setupLogger(time.Now())
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "tele-trader: failed to set up logging: %v\n", err)
+		os.Exit(1)
+	}
+	defer logFile.Close()
 
-	slog.Info("tele-trader: starting up")
+	slog.Info("tele-trader: starting up", "log_file", logPath)
 
 	// --- Configuration ---
 	cfg, err := config.Load()
