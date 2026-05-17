@@ -34,10 +34,21 @@ func NewHandler(appID int, appHash, phone string, channelID int64, session *File
 		appID:     appID,
 		appHash:   appHash,
 		phone:     phone,
-		channelID: channelID,
+		channelID: normalizeChannelID(channelID),
 		session:   session,
 		readyCh:   make(chan struct{}),
 	}
+}
+
+func normalizeChannelID(id int64) int64 {
+	if id >= 0 {
+		return id
+	}
+	id = -id
+	if id > 1000000000000 {
+		return id - 1000000000000
+	}
+	return id
 }
 
 // ReadyCh returns a channel that is closed once the Telegram session is

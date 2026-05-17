@@ -34,3 +34,8 @@ Master.md
 
 # logs
 *.log
+
+# build artifacts
+bin/*
+dist/*
+build/*

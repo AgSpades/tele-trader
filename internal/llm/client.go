@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"sync"
 
 	"github.com/anthropics/anthropic-sdk-go"
 	"github.com/anthropics/anthropic-sdk-go/option"
@@ -22,6 +23,8 @@ const (
 	maxToolLoopDepth = 10
 	// maxTokens is the maximum number of output tokens per Claude response.
 	maxTokens = 4096
+	// maxMemoryMessages bounds short-term context across Telegram messages.
+	maxMemoryMessages = 24
 )
 
 // Client orchestrates the Anthropic API with a tool-calling loop.
@@ -29,6 +32,9 @@ type Client struct {
 	ac     anthropic.Client
 	broker *broker.Client
 	cfg    *config.Config
+
+	mu      sync.Mutex
+	history []anthropic.MessageParam
 }
 
 // New creates a new LLM Client.
@@ -52,10 +58,12 @@ func New(cfg *config.Config, brokerClient *broker.Client) *Client {
 func (c *Client) ProcessSignal(ctx context.Context, signal models.Signal) (string, error) {
 	slog.Info("llm: processing signal", "text", signal.CleanText)
 
-	// Build the initial message history.
-	messages := []anthropic.MessageParam{
-		anthropic.NewUserMessage(anthropic.NewTextBlock(signal.CleanText)),
-	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	userMsg := anthropic.NewUserMessage(anthropic.NewTextBlock(signal.CleanText))
+	messages := append([]anthropic.MessageParam{}, c.history...)
+	messages = append(messages, userMsg)
 
 	allTools := tools()
 
@@ -83,7 +91,9 @@ func (c *Client) ProcessSignal(ctx context.Context, signal models.Signal) (strin
 		switch resp.StopReason {
 		case anthropic.StopReasonEndTurn:
 			// Extract the final text response.
-			return extractText(resp), nil
+			text := extractText(resp)
+			c.remember(userMsg, anthropic.NewAssistantMessage(anthropic.NewTextBlock(text)))
+			return text, nil
 
 		case anthropic.StopReasonToolUse:
 			// Dispatch all tool_use blocks and collect results.
@@ -101,6 +111,14 @@ func (c *Client) ProcessSignal(ctx context.Context, signal models.Signal) (strin
 	}
 
 	return "", errors.New("llm: max tool loop depth exceeded — possible infinite loop")
+}
+
+// remember stores only compact user/assistant turns, not raw tool traces.
+func (c *Client) remember(turns ...anthropic.MessageParam) {
+	c.history = append(c.history, turns...)
+	if len(c.history) > maxMemoryMessages {
+		c.history = c.history[len(c.history)-maxMemoryMessages:]
+	}
 }
 
 // dispatchToolCalls iterates over all tool_use content blocks in a Claude response,
@@ -172,6 +190,13 @@ func (c *Client) executeTool(ctx context.Context, tool anthropic.ToolUseBlock) (
 			return nil, fmt.Errorf("parse modify_order params: %w", err)
 		}
 		return c.broker.ModifyOrder(ctx, p)
+
+	case "cancel_order":
+		var p models.CancelOrderParams
+		if err := json.Unmarshal(inputBytes, &p); err != nil {
+			return nil, fmt.Errorf("parse cancel_order params: %w", err)
+		}
+		return c.broker.CancelOrder(ctx, p)
 
 	case "get_position_book":
 		return c.broker.GetPositionBook(ctx)

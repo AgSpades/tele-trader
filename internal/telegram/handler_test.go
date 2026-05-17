@@ -174,28 +174,13 @@ func TestChannelFilter(t *testing.T) {
 		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			// Replicate the filter: handler stores absID extracted from env channel.
-			// Negative channel IDs in Telegram API have prefix -100; gotd PeerChannel.ChannelID
-			// is the positive numeric part.
-			configuredAbs := absChannelID(wantChannelID)
+			// Negative channel IDs in Telegram API have prefix -100; gotd
+			// PeerChannel.ChannelID is the positive numeric part.
+			configuredAbs := normalizeChannelID(wantChannelID)
 			got := tc.channelID == configuredAbs
 			if got != tc.wantPass {
 				t.Errorf("channelID=%d: filter=%v, want %v", tc.channelID, got, tc.wantPass)
 			}
 		})
 	}
-}
-
-// absChannelID mirrors the handler's channel comparison logic:
-// gotd PeerChannel.ChannelID is the positive part of the -100XXXXXXXXXX format.
-func absChannelID(id int64) int64 {
-	if id < 0 {
-		// Strip the -100 prefix.
-		s := id * -1
-		if s > 1000000000 {
-			return s - 1000000000000
-		}
-		return s
-	}
-	return id
 }

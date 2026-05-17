@@ -31,10 +31,10 @@ type ToolResult struct {
 type PlaceOrderParams struct {
 	Strategy     string  `json:"strategy"`
 	Symbol       string  `json:"symbol"`
-	Action       string  `json:"action"`       // BUY or SELL
-	Exchange     string  `json:"exchange"`     // NFO, BFO, NSE, etc.
-	PriceType    string  `json:"price_type"`   // MARKET, LIMIT, SL
-	Product      string  `json:"product"`      // MIS (default), NRML
+	Action       string  `json:"action"`     // BUY or SELL
+	Exchange     string  `json:"exchange"`   // NFO, BFO, NSE, etc.
+	PriceType    string  `json:"price_type"` // MARKET, LIMIT, SL
+	Product      string  `json:"product"`    // MIS (default), NRML
 	Quantity     int     `json:"quantity"`
 	Price        float64 `json:"price,omitempty"`
 	TriggerPrice float64 `json:"trigger_price,omitempty"`
@@ -52,6 +52,12 @@ type ModifyOrderParams struct {
 	Quantity     int     `json:"quantity"`
 	Price        float64 `json:"price"`
 	TriggerPrice float64 `json:"trigger_price"`
+}
+
+// CancelOrderParams holds the parameters for cancelling an existing order.
+type CancelOrderParams struct {
+	OrderID  string `json:"order_id"`
+	Strategy string `json:"strategy"`
 }
 
 // SearchInstrumentsParams holds the query for instrument search.

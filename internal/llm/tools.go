@@ -84,7 +84,7 @@ func tools() []anthropic.ToolUnionParam {
 					},
 					"price": map[string]interface{}{
 						"type":        "number",
-						"description": "Limit price. Required for LIMIT and SL orders. For SL SELL on PE options: set 2-3 points BELOW trigger_price.",
+						"description": "Limit price. Required for LIMIT and SL orders. For protective SELL SL orders: set 2-3 points BELOW trigger_price.",
 					},
 					"trigger_price": map[string]interface{}{
 						"type":        "number",
@@ -130,7 +130,7 @@ func tools() []anthropic.ToolUnionParam {
 					},
 					"price": map[string]interface{}{
 						"type":        "number",
-						"description": "New limit price (2-3 points below new trigger for PE)",
+						"description": "New limit price, usually 2-3 points below the new trigger for a protective SELL SL order.",
 					},
 					"trigger_price": map[string]interface{}{
 						"type":        "number",
@@ -143,6 +143,23 @@ func tools() []anthropic.ToolUnionParam {
 				Required: []string{"order_id", "symbol", "action", "exchange", "price_type", "quantity", "price", "trigger_price"},
 			},
 			"modify_order",
+		),
+		anthropic.ToolUnionParamOfTool(
+			anthropic.ToolInputSchemaParam{
+				Type: "object",
+				Properties: map[string]interface{}{
+					"order_id": map[string]interface{}{
+						"type":        "string",
+						"description": "The pending order ID to cancel, usually the active protective SELL SL order after a manual/profit-book exit.",
+					},
+					"strategy": map[string]interface{}{
+						"type":        "string",
+						"description": "Strategy name tag. Defaults to TeleTrader if omitted.",
+					},
+				},
+				Required: []string{"order_id"},
+			},
+			"cancel_order",
 		),
 		anthropic.ToolUnionParamOfTool(
 			anthropic.ToolInputSchemaParam{
@@ -162,4 +179,3 @@ func tools() []anthropic.ToolUnionParam {
 		),
 	}
 }
-

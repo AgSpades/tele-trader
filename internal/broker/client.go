@@ -209,6 +209,25 @@ func (c *Client) ModifyOrder(ctx context.Context, p models.ModifyOrderParams) (j
 	return marshal(resp)
 }
 
+// CancelOrder cancels an existing pending order, typically an old protective SL.
+func (c *Client) CancelOrder(ctx context.Context, p models.CancelOrderParams) (json.RawMessage, error) {
+	if err := c.wait(ctx); err != nil {
+		return nil, err
+	}
+
+	if p.Strategy == "" {
+		p.Strategy = DefaultStrategy
+	}
+
+	slog.Info("broker: cancel_order", "order_id", p.OrderID, "strategy", p.Strategy)
+
+	resp, err := c.oa.CancelOrder(p.OrderID, p.Strategy)
+	if err != nil {
+		return errJSON(err), nil
+	}
+	return marshal(resp)
+}
+
 // GetPositionBook returns the current open positions.
 func (c *Client) GetPositionBook(ctx context.Context) (json.RawMessage, error) {
 	if err := c.wait(ctx); err != nil {
