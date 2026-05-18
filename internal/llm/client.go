@@ -20,7 +20,7 @@ const (
 	// claudeModel is the exact model identifier used for all requests.
 	claudeModel = "claude-sonnet-4-6"
 	// maxToolLoopDepth prevents runaway tool-call chains.
-	maxToolLoopDepth = 10
+	maxToolLoopDepth = 24
 	// maxTokens is the maximum number of output tokens per Claude response.
 	maxTokens = 4096
 	// maxMemoryMessages bounds short-term context across Telegram messages.
@@ -61,15 +61,17 @@ func (c *Client) ProcessSignal(ctx context.Context, signal models.Signal) (strin
 	slog.Info("llm: processing signal", "text", signal.CleanText)
 
 	c.mu.Lock()
-	defer c.mu.Unlock()
+	memory := c.memorySnapshot()
+	history := append([]anthropic.MessageParam{}, c.history...)
+	c.mu.Unlock()
 
 	historyUserMsg := anthropic.NewUserMessage(anthropic.NewTextBlock(signal.CleanText))
 	userMsg := anthropic.NewUserMessage(anthropic.NewTextBlock(fmt.Sprintf(
 		"TRADING_MEMORY:\n%s\n\nTELEGRAM_MESSAGE:\n%s",
-		c.memorySnapshot(),
+		memory,
 		signal.CleanText,
 	)))
-	messages := append([]anthropic.MessageParam{}, c.history...)
+	messages := append([]anthropic.MessageParam{}, history...)
 	messages = append(messages, userMsg)
 
 	allTools := tools()
@@ -99,7 +101,9 @@ func (c *Client) ProcessSignal(ctx context.Context, signal models.Signal) (strin
 		case anthropic.StopReasonEndTurn:
 			// Extract the final text response.
 			text := extractText(resp)
+			c.mu.Lock()
 			c.remember(historyUserMsg, anthropic.NewAssistantMessage(anthropic.NewTextBlock(text)))
+			c.mu.Unlock()
 			return text, nil
 
 		case anthropic.StopReasonToolUse:
@@ -210,14 +214,20 @@ func (c *Client) executeTool(ctx context.Context, tool anthropic.ToolUseBlock) (
 		if err := json.Unmarshal(inputBytes, &p); err != nil {
 			return nil, fmt.Errorf("parse upsert_trade_memory params: %w", err)
 		}
-		return c.upsertTradeMemory(p), nil
+		c.mu.Lock()
+		result := c.upsertTradeMemory(p)
+		c.mu.Unlock()
+		return result, nil
 
 	case "close_trade_memory":
 		var p closeTradeMemoryParams
 		if err := json.Unmarshal(inputBytes, &p); err != nil {
 			return nil, fmt.Errorf("parse close_trade_memory params: %w", err)
 		}
-		return c.closeTradeMemory(p), nil
+		c.mu.Lock()
+		result := c.closeTradeMemory(p)
+		c.mu.Unlock()
+		return result, nil
 
 	case "get_position_book":
 		return c.broker.GetPositionBook(ctx)

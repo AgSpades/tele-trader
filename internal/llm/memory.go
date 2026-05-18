@@ -240,3 +240,18 @@ func mergeNotes(existing, next string) string {
 		return existing + "; " + next
 	}
 }
+
+// SnapshotTrades returns a copy of current structured trade memory.
+func (c *Client) SnapshotTrades() []TradeMemory {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	trades := make([]TradeMemory, len(c.tradeMemory))
+	copy(trades, c.tradeMemory)
+	for i := range trades {
+		if trades[i].Targets != nil {
+			trades[i].Targets = append([]float64(nil), trades[i].Targets...)
+		}
+	}
+	return trades
+}
