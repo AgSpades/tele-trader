@@ -8,6 +8,8 @@ import (
 	"fmt"
 	"log/slog"
 	"strconv"
+	"strings"
+	"time"
 
 	"github.com/marketcalls/openalgo-go/openalgo"
 	"golang.org/x/time/rate"
@@ -72,7 +74,122 @@ func (c *Client) SearchInstruments(ctx context.Context, p models.SearchInstrumen
 	if err != nil {
 		return errJSON(err), nil // return error as JSON so LLM can reason about it
 	}
-	return marshal(resp)
+	filtered := filterNearestExpiry(resp, p.Query, p.Exchange)
+	return marshal(filtered)
+}
+
+func filterNearestExpiry(resp interface{}, query, exchange string) interface{} {
+	upperExchange := strings.ToUpper(strings.TrimSpace(exchange))
+	if upperExchange != "NFO" && upperExchange != "BFO" {
+		return resp
+	}
+
+	upperQuery := strings.ToUpper(query)
+	if !strings.Contains(upperQuery, " CE") && !strings.Contains(upperQuery, " PE") {
+		return resp
+	}
+
+	payload, ok := toMap(resp)
+	if !ok {
+		return resp
+	}
+
+	data, ok := payload["data"].([]interface{})
+	if !ok || len(data) == 0 {
+		return resp
+	}
+
+	today := startOfDay(time.Now())
+	var nearest time.Time
+	for _, item := range data {
+		entry, ok := item.(map[string]interface{})
+		if !ok {
+			continue
+		}
+		expiry := strings.TrimSpace(stringValue(entry["expiry"]))
+		if expiry == "" {
+			continue
+		}
+		parsed, err := time.ParseInLocation("02-JAN-06", strings.ToUpper(expiry), today.Location())
+		if err != nil {
+			continue
+		}
+		parsed = startOfDay(parsed)
+		if parsed.Before(today) {
+			continue
+		}
+		if nearest.IsZero() || parsed.Before(nearest) {
+			nearest = parsed
+		}
+	}
+
+	if nearest.IsZero() {
+		return resp
+	}
+
+	filtered := make([]interface{}, 0, len(data))
+	for _, item := range data {
+		entry, ok := item.(map[string]interface{})
+		if !ok {
+			continue
+		}
+		expiry := strings.TrimSpace(stringValue(entry["expiry"]))
+		if expiry == "" {
+			continue
+		}
+		parsed, err := time.ParseInLocation("02-JAN-06", strings.ToUpper(expiry), today.Location())
+		if err != nil {
+			continue
+		}
+		if startOfDay(parsed).Equal(nearest) {
+			filtered = append(filtered, entry)
+		}
+	}
+
+	if len(filtered) == 0 {
+		return resp
+	}
+
+	payload["data"] = filtered
+	slog.Info("broker: search_instruments filtered", "exchange", exchange, "nearest_expiry", nearest.Format("2006-01-02"), "count", len(filtered))
+	return payload
+}
+
+func toMap(resp interface{}) (map[string]interface{}, bool) {
+	if resp == nil {
+		return nil, false
+	}
+	if payload, ok := resp.(map[string]interface{}); ok {
+		return payload, true
+	}
+	b, err := json.Marshal(resp)
+	if err != nil {
+		return nil, false
+	}
+	var payload map[string]interface{}
+	if err := json.Unmarshal(b, &payload); err != nil {
+		return nil, false
+	}
+	return payload, true
+}
+
+func startOfDay(t time.Time) time.Time {
+	loc := t.Location()
+	return time.Date(t.Year(), t.Month(), t.Day(), 0, 0, 0, 0, loc)
+}
+
+func stringValue(v interface{}) string {
+	if v == nil {
+		return ""
+	}
+	switch typed := v.(type) {
+	case string:
+		return typed
+	case float64:
+		return strconv.FormatFloat(typed, 'f', 0, 64)
+	default:
+		return fmt.Sprintf("%v", typed)
+	}
 }
 
 // GetQuote fetches the current quote (LTP, bid, ask, etc.) for a symbol.

@@ -146,8 +146,8 @@ Entry rules:
 - If a later bare numeric update reaches X, re-check quote and enter only if still valid.
 - If LIVE_QUOTE_UPDATE says PENDING_TRIGGER_HIT and LTP is inside the allowed entry zone, proceed with entry validation and execution.
 - If message gives a range X-Y, enter only when LTP is inside the range or up to 5%% above Y.
-- If message gives a reference price X without "ABOVE", enter only when LTP is from X to X+5%%.
-- If LTP is more than 5%% above the upper entry level, do not chase.
+- If message gives a reference price X without "ABOVE", enter only when LTP is from X to X+15%%.
+- If LTP is more than 15%% above the upper entry level, do not chase.
 - If the entry message itself says "Risky trader only", ignore it unless there is no safer qualifier and the call is otherwise complete. Prefer no trade.
 
 Execute exactly %d lot(s). Quantity must be the instrument lot size multiplied by %d.

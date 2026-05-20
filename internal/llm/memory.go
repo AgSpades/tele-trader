@@ -255,3 +255,45 @@ func (c *Client) SnapshotTrades() []TradeMemory {
 	}
 	return trades
 }
+
+// UpdateTradeMemorySystem updates trade memory from internal system components
+// (e.g., quote monitor) without routing through LLM tool calls.
+func (c *Client) UpdateTradeMemorySystem(update TradeMemory) TradeMemory {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	update.UpdatedAt = time.Now().UTC()
+	if update.ID == "" {
+		update.ID = deriveTradeMemoryID(update)
+	}
+
+	for i := range c.tradeMemory {
+		if sameTradeMemory(c.tradeMemory[i], update) {
+			mergeTradeMemory(&c.tradeMemory[i], update)
+			return c.tradeMemory[i]
+		}
+	}
+
+	c.tradeMemory = append(c.tradeMemory, update)
+	if len(c.tradeMemory) > maxTradeMemory {
+		c.tradeMemory = c.tradeMemory[len(c.tradeMemory)-maxTradeMemory:]
+	}
+	return update
+}
+
+// CloseTradeMemorySystem marks a trade as closed from internal system components.
+func (c *Client) CloseTradeMemorySystem(id, symbol, reason string) (TradeMemory, bool) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	for i := range c.tradeMemory {
+		if (id != "" && c.tradeMemory[i].ID == id) || (symbol != "" && c.tradeMemory[i].Symbol == symbol) {
+			c.tradeMemory[i].Status = tradeStatusClosed
+			c.tradeMemory[i].Notes = mergeNotes(c.tradeMemory[i].Notes, strings.TrimSpace(reason))
+			c.tradeMemory[i].UpdatedAt = time.Now().UTC()
+			return c.tradeMemory[i], true
+		}
+	}
+
+	return TradeMemory{}, false
+}

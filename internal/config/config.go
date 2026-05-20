@@ -20,7 +20,8 @@ type Config struct {
 	TelegramChannelID int64
 
 	// Anthropic (Claude) credentials
-	AnthropicAPIKey string
+	AnthropicAPIKey  string
+	AnthropicBaseURL string
 
 	// OpenAlgo trading platform
 	OpenAlgoURL    string
@@ -65,6 +66,7 @@ func Load() (*Config, error) {
 
 	// --- Anthropic ---
 	cfg.AnthropicAPIKey = requireEnv("ANTHROPIC_API_KEY")
+	cfg.AnthropicBaseURL = envWithDefault("ANTHROPIC_BASE_URL", "")
 
 	// --- OpenAlgo ---
 	cfg.OpenAlgoURL = envWithDefault("OPENALGO_URL", "http://127.0.0.1:5000")
@@ -77,7 +79,7 @@ func Load() (*Config, error) {
 	cfg.DryRun = envBool("DRY_RUN", true) // default true — safe during development
 
 	// --- Trading parameters ---
-	cfg.TradeLotSize = envInt("TRADE_LOT_SIZE", 1)             // default 1 lot
+	cfg.TradeLotSize = envInt("TRADE_LOT_SIZE", 1)              // default 1 lot
 	cfg.OpeningSLPercent = envFloat("OPENING_SL_PERCENT", 15.0) // default 15%
 
 	return cfg, nil

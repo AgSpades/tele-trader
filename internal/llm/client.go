@@ -41,7 +41,11 @@ type Client struct {
 
 // New creates a new LLM Client.
 func New(cfg *config.Config, brokerClient *broker.Client) *Client {
-	ac := anthropic.NewClient(option.WithAPIKey(cfg.AnthropicAPIKey))
+	opts := []option.RequestOption{option.WithAPIKey(cfg.AnthropicAPIKey)}
+	if cfg.AnthropicBaseURL != "" {
+		opts = append(opts, option.WithBaseURL(cfg.AnthropicBaseURL))
+	}
+	ac := anthropic.NewClient(opts...)
 	return &Client{
 		ac:     ac,
 		broker: brokerClient,
