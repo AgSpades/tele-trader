@@ -15,18 +15,19 @@ import (
 	"github.com/AgSpades/tele-trader.git/internal/broker"
 	"github.com/AgSpades/tele-trader.git/internal/config"
 	"github.com/AgSpades/tele-trader.git/internal/llm"
-	"github.com/AgSpades/tele-trader.git/internal/models"
 	telegramPkg "github.com/AgSpades/tele-trader.git/internal/telegram"
 )
 
 func main() {
 	// --- Structured JSON logging ---
-	logger := slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{
-		Level: slog.LevelInfo,
-	}))
-	slog.SetDefault(logger)
+	logFile, logPath, err := setupLogger(time.Now())
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "tele-trader: failed to set up logging: %v\n", err)
+		os.Exit(1)
+	}
+	defer logFile.Close()
 
-	slog.Info("tele-trader: starting up")
+	slog.Info("tele-trader: starting up", "log_file", logPath)
 
 	// --- Configuration ---
 	cfg, err := config.Load()
@@ -77,23 +78,21 @@ func main() {
 		os.Exit(1)
 	}
 
-	// --- Signal processor goroutine ---
+	// --- Signal processor workers and burst batcher ---
+	processor := newSignalProcessor(llmClient)
+	processor.Start(ctx)
+	defer processor.Stop()
+
+	go runSignalBatcher(ctx, msgCh, processor)
+	go newQuoteMonitor(brokerClient, llmClient, processor).Run(ctx)
+
 	go func() {
-		slog.Info("tele-trader: signal processor armed")
-		for {
-			select {
-			case <-ctx.Done():
-				slog.Info("tele-trader: signal processor shutting down")
-				return
-			case rawMsg, ok := <-msgCh:
-				if !ok {
-					return
-				}
-				processSignal(ctx, llmClient, rawMsg)
-			case err := <-errCh:
-				slog.Error("tele-trader: fatal background error", "error", err)
-				os.Exit(1)
-			}
+		select {
+		case err := <-errCh:
+			slog.Error("tele-trader: fatal background error", "error", err)
+			os.Exit(1)
+		case <-ctx.Done():
+			return
 		}
 	}()
 
@@ -192,27 +191,4 @@ func startupCheckTimeout() time.Duration {
 		return def
 	}
 	return d
-}
-
-// processSignal wraps the LLM signal processing with timeout and logging.
-func processSignal(ctx context.Context, llmClient *llm.Client, msg string) {
-	// Per-signal timeout to prevent a single stalled API call from blocking the processor.
-	sigCtx, cancel := context.WithTimeout(ctx, 5*time.Minute)
-	defer cancel()
-
-	signal := models.Signal{
-		RawText:    msg,
-		CleanText:  msg, // already cleaned by telegram handler
-		ReceivedAt: time.Now(),
-	}
-
-	slog.Info("tele-trader: processing signal", "signal", msg)
-
-	result, err := llmClient.ProcessSignal(sigCtx, signal)
-	if err != nil {
-		slog.Error("tele-trader: llm processing error", "error", err, "signal", msg)
-		return
-	}
-
-	slog.Info("tele-trader: agent response", "response", result)
 }

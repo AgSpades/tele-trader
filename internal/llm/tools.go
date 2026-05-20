@@ -5,7 +5,7 @@ import (
 )
 
 // tools returns the full list of Anthropic tool definitions exposed to Claude.
-// Each tool corresponds to one broker method.
+// Most tools call the broker; trade-memory tools update local structured state.
 func tools() []anthropic.ToolUnionParam {
 	return []anthropic.ToolUnionParam{
 		anthropic.ToolUnionParamOfTool(
@@ -176,6 +176,106 @@ func tools() []anthropic.ToolUnionParam {
 				Required:   []string{},
 			},
 			"get_order_book",
+		),
+		anthropic.ToolUnionParamOfTool(
+			anthropic.ToolInputSchemaParam{
+				Type: "object",
+				Properties: map[string]interface{}{
+					"id": map[string]interface{}{
+						"type":        "string",
+						"description": "Stable trade memory ID. Use symbol when known, otherwise INDEX-STRIKE-CE/PE, e.g. NIFTY-23800-PE.",
+					},
+					"status": map[string]interface{}{
+						"type":        "string",
+						"description": "Current lifecycle state for this call.",
+						"enum":        []string{"pending", "active", "closed"},
+					},
+					"index": map[string]interface{}{
+						"type":        "string",
+						"description": "Underlying index, e.g. NIFTY or SENSEX.",
+					},
+					"strike": map[string]interface{}{
+						"type":        "integer",
+						"description": "Option strike price.",
+					},
+					"option_type": map[string]interface{}{
+						"type":        "string",
+						"description": "Option side.",
+						"enum":        []string{"CE", "PE"},
+					},
+					"exchange": map[string]interface{}{
+						"type":        "string",
+						"description": "Exchange for the option, e.g. NFO or BFO.",
+					},
+					"symbol": map[string]interface{}{
+						"type":        "string",
+						"description": "Resolved broker symbol when known.",
+					},
+					"entry_trigger": map[string]interface{}{
+						"type":        "number",
+						"description": "BUY ABOVE trigger or entry reference.",
+					},
+					"entry_upper": map[string]interface{}{
+						"type":        "number",
+						"description": "Upper edge of entry range. Use same value as entry_trigger for single-price entries.",
+					},
+					"entry_price": map[string]interface{}{
+						"type":        "number",
+						"description": "Actual/average entry price once active.",
+					},
+					"stop_loss": map[string]interface{}{
+						"type":        "number",
+						"description": "Current SL trigger level.",
+					},
+					"targets": map[string]interface{}{
+						"type":        "array",
+						"description": "Known target levels in ascending order.",
+						"items":       map[string]interface{}{"type": "number"},
+					},
+					"targets_hit": map[string]interface{}{
+						"type":        "integer",
+						"description": "Number of targets completed so far.",
+					},
+					"quantity": map[string]interface{}{
+						"type":        "integer",
+						"description": "Open quantity in units, not lots.",
+					},
+					"sl_order_id": map[string]interface{}{
+						"type":        "string",
+						"description": "Protective SELL SL order ID when known.",
+					},
+					"last_message": map[string]interface{}{
+						"type":        "string",
+						"description": "Most recent Telegram message that changed this memory.",
+					},
+					"notes": map[string]interface{}{
+						"type":        "string",
+						"description": "Short context note, e.g. pending trigger waiting or first target hit.",
+					},
+				},
+				Required: []string{"status"},
+			},
+			"upsert_trade_memory",
+		),
+		anthropic.ToolUnionParamOfTool(
+			anthropic.ToolInputSchemaParam{
+				Type: "object",
+				Properties: map[string]interface{}{
+					"id": map[string]interface{}{
+						"type":        "string",
+						"description": "Trade memory ID to close.",
+					},
+					"symbol": map[string]interface{}{
+						"type":        "string",
+						"description": "Resolved broker symbol to close if ID is unavailable.",
+					},
+					"reason": map[string]interface{}{
+						"type":        "string",
+						"description": "Short reason for closing, e.g. profit booked or all targets done.",
+					},
+				},
+			},
+			"close_trade_memory",
 		),
 	}
 }
